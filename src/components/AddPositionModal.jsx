@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { X, Loader2, Zap, AlertCircle } from 'lucide-react';
+import { X, Loader2, Link, AlertCircle, Check, Clipboard } from 'lucide-react';
 import { CHAINS, PROTOCOLS, POSITION_TYPES, EXPOSURE_TYPES } from '../lib/constants';
 import { fetchUniswapV3Position } from '../lib/blockchain';
+import { parseDefiLink } from '../lib/linkParser';
 
 export default function AddPositionModal({ isOpen, onClose, onSave, editPosition }) {
   const [formData, setFormData] = useState({
@@ -19,9 +20,11 @@ export default function AddPositionModal({ isOpen, onClose, onSave, editPosition
     token1: '',
   });
 
+  const [linkInput, setLinkInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [fetchMode, setFetchMode] = useState(false);
+  const [success, setSuccess] = useState(null);
+  const [parsedLink, setParsedLink] = useState(null);
 
   // Populate form when editing
   useEffect(() => {
@@ -40,8 +43,8 @@ export default function AddPositionModal({ isOpen, onClose, onSave, editPosition
         token0: editPosition.token0 || '',
         token1: editPosition.token1 || '',
       });
+      setLinkInput('');
     } else {
-      // Reset form for new position
       setFormData({
         name: '',
         protocol: 'uniswap-v3',
@@ -56,23 +59,54 @@ export default function AddPositionModal({ isOpen, onClose, onSave, editPosition
         token0: '',
         token1: '',
       });
+      setLinkInput('');
     }
     setError(null);
+    setSuccess(null);
+    setParsedLink(null);
   }, [editPosition, isOpen]);
+
+  // Parse link as user types
+  useEffect(() => {
+    if (linkInput.length > 10) {
+      const parsed = parseDefiLink(linkInput);
+      setParsedLink(parsed);
+      if (parsed) {
+        setFormData(prev => ({
+          ...prev,
+          chain: parsed.chain || prev.chain,
+          nftId: parsed.nftId || parsed.tokenId || prev.nftId,
+          protocol: parsed.protocol || prev.protocol,
+        }));
+      }
+    } else {
+      setParsedLink(null);
+    }
+  }, [linkInput]);
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setError(null);
   };
 
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setLinkInput(text);
+    } catch (err) {
+      setError('Could not read clipboard');
+    }
+  };
+
   const handleFetchFromChain = async () => {
     if (!formData.nftId || !formData.chain) {
-      setError('Please enter NFT ID and select a chain');
+      setError('Need NFT ID and chain to fetch');
       return;
     }
 
     setIsLoading(true);
     setError(null);
+    setSuccess(null);
 
     try {
       const position = await fetchUniswapV3Position(formData.chain, formData.nftId);
@@ -85,9 +119,9 @@ export default function AddPositionModal({ isOpen, onClose, onSave, editPosition
         protocol: position.protocol,
       }));
 
-      setFetchMode(false);
+      setSuccess('Position data fetched! Add value & APR manually.');
     } catch (err) {
-      setError(err.message || 'Failed to fetch position from chain');
+      setError(err.message || 'Failed to fetch position');
     } finally {
       setIsLoading(false);
     }
@@ -96,7 +130,6 @@ export default function AddPositionModal({ isOpen, onClose, onSave, editPosition
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // Validation
     if (!formData.name.trim()) {
       setError('Position name is required');
       return;
@@ -114,7 +147,6 @@ export default function AddPositionModal({ isOpen, onClose, onSave, editPosition
       monthlyFees: parseFloat(formData.monthlyFees) || 0,
     };
 
-    // If editing, include the ID
     if (editPosition) {
       position.id = editPosition.id;
     }
@@ -127,71 +159,87 @@ export default function AddPositionModal({ isOpen, onClose, onSave, editPosition
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal */}
       <div className="relative bg-bg-secondary border border-border-primary rounded-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border-primary sticky top-0 bg-bg-secondary z-10">
           <h2 className="text-lg font-semibold text-text-primary">
             {editPosition ? 'Edit Position' : 'Add Position'}
           </h2>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-bg-tertiary rounded transition-colors"
-          >
+          <button onClick={onClose} className="p-1 hover:bg-bg-tertiary rounded transition-colors">
             <X className="w-5 h-5 text-text-tertiary" />
           </button>
         </div>
 
-        {/* Body */}
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          {/* Fetch from chain toggle */}
-          {!editPosition && (formData.protocol === 'uniswap-v3' || formData.protocol === 'uniswap-v4') && (
-            <div className="bg-bg-tertiary rounded-lg p-3">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={fetchMode}
-                  onChange={(e) => setFetchMode(e.target.checked)}
-                  className="w-4 h-4 rounded border-border-primary bg-bg-secondary text-accent-blue focus:ring-accent-blue"
-                />
-                <Zap className="w-4 h-4 text-accent-yellow" />
-                <span className="text-sm text-text-secondary">Fetch from blockchain by NFT ID</span>
-              </label>
+          {/* Paste Link Section */}
+          {!editPosition && (
+            <div className="bg-bg-tertiary rounded-lg p-4 border border-border-secondary">
+              <div className="flex items-center gap-2 mb-2">
+                <Link className="w-4 h-4 text-accent-blue" />
+                <span className="text-sm font-medium text-text-primary">Paste Position Link</span>
+              </div>
+              <p className="text-xs text-text-tertiary mb-3">
+                Uniswap, Arbiscan, Etherscan, etc.
+              </p>
 
-              {fetchMode && (
-                <div className="mt-3 flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="NFT ID (e.g., 103138)"
-                    value={formData.nftId}
-                    onChange={(e) => handleChange('nftId', e.target.value)}
-                    className="flex-1 px-3 py-2 bg-bg-secondary border border-border-primary rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent-blue"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleFetchFromChain}
-                    disabled={isLoading}
-                    className="px-4 py-2 bg-accent-blue text-white rounded-lg text-sm font-medium hover:bg-accent-blue/80 disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    Fetch
-                  </button>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="https://app.uniswap.org/pools/123..."
+                  value={linkInput}
+                  onChange={(e) => setLinkInput(e.target.value)}
+                  className="flex-1 px-3 py-2 bg-bg-secondary border border-border-primary rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent-blue"
+                />
+                <button
+                  type="button"
+                  onClick={handlePasteFromClipboard}
+                  className="px-3 py-2 bg-bg-secondary border border-border-primary rounded-lg hover:bg-bg-elevated transition-colors"
+                  title="Paste from clipboard"
+                >
+                  <Clipboard className="w-4 h-4 text-text-tertiary" />
+                </button>
+              </div>
+
+              {/* Parsed link feedback */}
+              {parsedLink && (
+                <div className="mt-2 flex items-center gap-2 text-sm">
+                  <Check className="w-4 h-4 text-accent-green" />
+                  <span className="text-accent-green">
+                    Detected: {parsedLink.type === 'uniswap' ? 'Uniswap' : 'Explorer'} on {parsedLink.chain}
+                    {parsedLink.nftId && ` (NFT #${parsedLink.nftId})`}
+                  </span>
                 </div>
+              )}
+
+              {/* Fetch button */}
+              {parsedLink?.nftId && (
+                <button
+                  type="button"
+                  onClick={handleFetchFromChain}
+                  disabled={isLoading}
+                  className="mt-3 w-full px-4 py-2 bg-accent-blue text-white rounded-lg text-sm font-medium hover:bg-accent-blue/80 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {isLoading ? 'Fetching...' : 'Fetch Position Data'}
+                </button>
               )}
             </div>
           )}
 
-          {/* Error message */}
+          {/* Messages */}
           {error && (
             <div className="flex items-center gap-2 p-3 bg-accent-red/10 border border-accent-red/30 rounded-lg">
               <AlertCircle className="w-4 h-4 text-accent-red flex-shrink-0" />
               <span className="text-sm text-accent-red">{error}</span>
+            </div>
+          )}
+
+          {success && (
+            <div className="flex items-center gap-2 p-3 bg-accent-green/10 border border-accent-green/30 rounded-lg">
+              <Check className="w-4 h-4 text-accent-green flex-shrink-0" />
+              <span className="text-sm text-accent-green">{success}</span>
             </div>
           )}
 
@@ -319,41 +367,10 @@ export default function AddPositionModal({ isOpen, onClose, onSave, editPosition
             </div>
           </div>
 
-          {/* Tokens (optional) */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm text-text-secondary mb-1">Token 0</label>
-              <input
-                type="text"
-                value={formData.token0}
-                onChange={(e) => handleChange('token0', e.target.value)}
-                placeholder="e.g., ETH"
-                className="w-full px-3 py-2 bg-bg-tertiary border border-border-primary rounded-lg text-text-primary focus:outline-none focus:border-accent-blue"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-text-secondary mb-1">Token 1</label>
-              <input
-                type="text"
-                value={formData.token1}
-                onChange={(e) => handleChange('token1', e.target.value)}
-                placeholder="e.g., USDC"
-                className="w-full px-3 py-2 bg-bg-tertiary border border-border-primary rounded-lg text-text-primary focus:outline-none focus:border-accent-blue"
-              />
-            </div>
-          </div>
-
-          {/* NFT ID (for Uniswap) */}
-          {(formData.protocol === 'uniswap-v3' || formData.protocol === 'uniswap-v4') && !fetchMode && (
-            <div>
-              <label className="block text-sm text-text-secondary mb-1">NFT ID</label>
-              <input
-                type="text"
-                value={formData.nftId}
-                onChange={(e) => handleChange('nftId', e.target.value)}
-                placeholder="e.g., 103138"
-                className="w-full px-3 py-2 bg-bg-tertiary border border-border-primary rounded-lg text-text-primary focus:outline-none focus:border-accent-blue"
-              />
+          {/* NFT ID (for reference) */}
+          {formData.nftId && (
+            <div className="text-xs text-text-tertiary">
+              NFT ID: {formData.nftId}
             </div>
           )}
 

@@ -176,6 +176,7 @@ export default function Dashboard() {
             onEdit={handleEditPosition}
             onDelete={handleDeletePosition}
             onDuplicate={duplicatePosition}
+            onUpdateField={updatePosition}
           />
         </div>
 

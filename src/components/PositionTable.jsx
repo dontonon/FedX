@@ -1,19 +1,82 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   ChevronUp,
   ChevronDown,
   MoreVertical,
-  Edit2,
   Trash2,
   Copy,
   ExternalLink,
   AlertTriangle,
   TrendingUp,
   Zap,
+  Edit2,
 } from 'lucide-react';
 import { formatCurrency, formatPercent, getChainInfo, getPositionTypeInfo, getPositionRecommendation, sortPositions } from '../lib/utils';
 
-export default function PositionTable({ positions, onEdit, onDelete, onDuplicate }) {
+// Inline editable cell component
+function EditableCell({ value, type = 'number', onSave, format, className = '' }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value?.toString() || '');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleDoubleClick = () => {
+    setEditValue(value?.toString() || '');
+    setIsEditing(true);
+  };
+
+  const handleSave = () => {
+    const newValue = type === 'number' ? parseFloat(editValue) || 0 : editValue;
+    onSave(newValue);
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditValue(value?.toString() || '');
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleSave();
+    } else if (e.key === 'Escape') {
+      handleCancel();
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <input
+        ref={inputRef}
+        type={type}
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={handleSave}
+        step={type === 'number' ? '0.01' : undefined}
+        className="w-24 px-2 py-1 bg-bg-tertiary border border-accent-blue rounded text-text-primary font-mono text-sm focus:outline-none"
+      />
+    );
+  }
+
+  return (
+    <span
+      onDoubleClick={handleDoubleClick}
+      className={`cursor-pointer hover:bg-bg-tertiary/50 px-2 py-1 rounded transition-colors border border-transparent hover:border-border-primary ${className}`}
+      title="Double-click to edit"
+    >
+      {format ? format(value) : value}
+    </span>
+  );
+}
+
+export default function PositionTable({ positions, onEdit, onDelete, onDuplicate, onUpdateField }) {
   const [sortField, setSortField] = useState('value');
   const [sortDirection, setSortDirection] = useState('desc');
   const [expandedRow, setExpandedRow] = useState(null);
@@ -28,6 +91,12 @@ export default function PositionTable({ positions, onEdit, onDelete, onDuplicate
     } else {
       setSortField(field);
       setSortDirection('desc');
+    }
+  };
+
+  const handleFieldUpdate = (positionId, field, value) => {
+    if (onUpdateField) {
+      onUpdateField(positionId, { [field]: value });
     }
   };
 
@@ -90,6 +159,13 @@ export default function PositionTable({ positions, onEdit, onDelete, onDuplicate
 
   return (
     <div className="bg-bg-secondary rounded-xl border border-border-primary overflow-hidden">
+      {/* Hint for inline editing */}
+      <div className="px-4 py-2 bg-bg-tertiary/50 border-b border-border-secondary">
+        <p className="text-xs text-text-tertiary">
+          Double-click <span className="text-accent-blue">Value</span>, <span className="text-accent-blue">APR</span>, or <span className="text-accent-blue">Monthly</span> to edit inline (like a spreadsheet)
+        </p>
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
@@ -124,7 +200,7 @@ export default function PositionTable({ positions, onEdit, onDelete, onDuplicate
                   className="border-b border-border-secondary table-row-hover"
                 >
                   {/* Position Name */}
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-3">
                     <div>
                       <div className="font-medium text-text-primary">{position.name}</div>
                       <div className="text-xs text-text-tertiary">{position.protocol}</div>
@@ -132,7 +208,7 @@ export default function PositionTable({ positions, onEdit, onDelete, onDuplicate
                   </td>
 
                   {/* Chain */}
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div
                         className="w-2 h-2 rounded-full"
@@ -143,7 +219,7 @@ export default function PositionTable({ positions, onEdit, onDelete, onDuplicate
                   </td>
 
                   {/* Type */}
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-3">
                     <span
                       className="px-2 py-1 rounded-md text-xs font-medium"
                       style={{
@@ -155,39 +231,58 @@ export default function PositionTable({ positions, onEdit, onDelete, onDuplicate
                     </span>
                   </td>
 
-                  {/* Value */}
-                  <td className="px-4 py-4 text-right">
+                  {/* Value - Editable */}
+                  <td className="px-4 py-3 text-right">
                     <div className="font-mono font-medium text-text-primary">
-                      {formatCurrency(position.value)}
+                      <EditableCell
+                        value={position.value}
+                        type="number"
+                        onSave={(val) => handleFieldUpdate(position.id, 'value', val)}
+                        format={formatCurrency}
+                      />
                     </div>
                     {position.debt > 0 && (
-                      <div className="font-mono text-xs text-accent-red">
-                        -{formatCurrency(position.debt)} debt
+                      <div className="font-mono text-xs text-accent-red mt-1">
+                        <EditableCell
+                          value={position.debt}
+                          type="number"
+                          onSave={(val) => handleFieldUpdate(position.id, 'debt', val)}
+                          format={(v) => `-${formatCurrency(v)} debt`}
+                          className="text-accent-red"
+                        />
                       </div>
                     )}
                   </td>
 
-                  {/* APR */}
-                  <td className="px-4 py-4 text-right">
-                    <span className={`font-mono ${position.apr > 20 ? 'text-accent-green' : 'text-text-secondary'}`}>
-                      {formatPercent(position.apr)}
-                    </span>
+                  {/* APR - Editable */}
+                  <td className="px-4 py-3 text-right">
+                    <EditableCell
+                      value={position.apr}
+                      type="number"
+                      onSave={(val) => handleFieldUpdate(position.id, 'apr', val)}
+                      format={formatPercent}
+                      className={`font-mono ${position.apr > 20 ? 'text-accent-green' : 'text-text-secondary'}`}
+                    />
                   </td>
 
-                  {/* Monthly Fees */}
-                  <td className="px-4 py-4 text-right">
-                    <span className="font-mono text-accent-green">
-                      {formatCurrency(position.monthlyFees)}
-                    </span>
+                  {/* Monthly Fees - Editable */}
+                  <td className="px-4 py-3 text-right">
+                    <EditableCell
+                      value={position.monthlyFees}
+                      type="number"
+                      onSave={(val) => handleFieldUpdate(position.id, 'monthlyFees', val)}
+                      format={formatCurrency}
+                      className="font-mono text-accent-green"
+                    />
                   </td>
 
                   {/* Recommendation */}
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-3">
                     {renderRecommendation(position)}
                   </td>
 
                   {/* Actions */}
-                  <td className="px-4 py-4 text-right">
+                  <td className="px-4 py-3 text-right">
                     <div className="relative">
                       <button
                         onClick={() => setExpandedRow(isExpanded ? null : position.id)}
@@ -206,7 +301,7 @@ export default function PositionTable({ positions, onEdit, onDelete, onDuplicate
                             className="flex items-center gap-2 w-full px-3 py-2 text-sm text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
                           >
                             <Edit2 className="w-4 h-4" />
-                            Edit
+                            Edit All Fields
                           </button>
                           <button
                             onClick={() => {
@@ -220,7 +315,7 @@ export default function PositionTable({ positions, onEdit, onDelete, onDuplicate
                           </button>
                           {position.nftId && (
                             <a
-                              href={`https://app.uniswap.org/pool/${position.nftId}`}
+                              href={`https://app.uniswap.org/pools/${position.nftId}?chain=${position.chain}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex items-center gap-2 w-full px-3 py-2 text-sm text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
@@ -248,6 +343,25 @@ export default function PositionTable({ positions, onEdit, onDelete, onDuplicate
               );
             })}
           </tbody>
+
+          {/* Summary row */}
+          <tfoot>
+            <tr className="bg-bg-tertiary/50">
+              <td colSpan={3} className="px-4 py-3 text-sm font-medium text-text-secondary">
+                Total ({positions.length} positions)
+              </td>
+              <td className="px-4 py-3 text-right font-mono font-semibold text-text-primary">
+                {formatCurrency(positions.reduce((sum, p) => sum + (p.value || 0), 0))}
+              </td>
+              <td className="px-4 py-3 text-right font-mono text-text-tertiary">
+                —
+              </td>
+              <td className="px-4 py-3 text-right font-mono font-semibold text-accent-green">
+                {formatCurrency(positions.reduce((sum, p) => sum + (p.monthlyFees || 0), 0))}
+              </td>
+              <td colSpan={2}></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>

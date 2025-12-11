@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Wallet, Settings, Download, Upload, RefreshCw, Camera } from 'lucide-react';
+import { Wallet, Settings, Download, Upload, RefreshCw, Camera, Info } from 'lucide-react';
 import { truncateAddress } from '../lib/utils';
 import usePortfolioStore from '../stores/portfolio';
 
-export default function Header({ onSnapshot }) {
+export default function Header({ onSnapshot, onAbout }) {
   const [showSettings, setShowSettings] = useState(false);
   const { settings, updateSettings, exportData, importData, resetToSampleData } = usePortfolioStore();
 
@@ -52,6 +52,15 @@ export default function Header({ onSnapshot }) {
 
           {/* Actions */}
           <div className="flex items-center gap-2">
+            {/* About button */}
+            <button
+              onClick={onAbout}
+              className="p-2 hover:bg-bg-tertiary rounded-lg text-text-tertiary hover:text-text-secondary transition-colors"
+              title="About FedX"
+            >
+              <Info className="w-5 h-5" />
+            </button>
+
             {/* Snapshot button */}
             <button
               onClick={onSnapshot}

@@ -111,15 +111,23 @@ export default function AddPositionModal({ isOpen, onClose, onSave, editPosition
     try {
       const position = await fetchUniswapV3Position(formData.chain, formData.nftId);
 
+      // Auto-populate all available data including USD value
       setFormData(prev => ({
         ...prev,
         name: `${position.token0.symbol}/${position.token1.symbol} ${position.fee}%`,
         token0: position.token0.symbol,
         token1: position.token1.symbol,
         protocol: position.protocol,
+        exposure: `${position.token0.symbol}/${position.token1.symbol}`,
+        value: position.totalValueUSD.toFixed(2),
       }));
 
-      setSuccess('Position data fetched! Add value & APR manually.');
+      // Build detailed success message
+      const rangeStatus = position.inRange ? '✓ In Range' : '⚠ Out of Range';
+      const t0 = `${position.token0.amount.toFixed(4)} ${position.token0.symbol} ($${position.token0.valueUSD.toFixed(2)})`;
+      const t1 = `${position.token1.amount.toFixed(4)} ${position.token1.symbol} ($${position.token1.valueUSD.toFixed(2)})`;
+
+      setSuccess(`Fetched! ${rangeStatus}\n${t0}\n${t1}\nTotal: $${position.totalValueUSD.toFixed(2)} — Add APR manually`);
     } catch (err) {
       setError(err.message || 'Failed to fetch position');
     } finally {
@@ -237,9 +245,9 @@ export default function AddPositionModal({ isOpen, onClose, onSave, editPosition
           )}
 
           {success && (
-            <div className="flex items-center gap-2 p-3 bg-accent-green/10 border border-accent-green/30 rounded-lg">
-              <Check className="w-4 h-4 text-accent-green flex-shrink-0" />
-              <span className="text-sm text-accent-green">{success}</span>
+            <div className="flex items-start gap-2 p-3 bg-accent-green/10 border border-accent-green/30 rounded-lg">
+              <Check className="w-4 h-4 text-accent-green flex-shrink-0 mt-0.5" />
+              <span className="text-sm text-accent-green whitespace-pre-line">{success}</span>
             </div>
           )}
 

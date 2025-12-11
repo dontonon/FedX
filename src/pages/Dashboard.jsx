@@ -11,6 +11,7 @@ import PositionTable from '../components/PositionTable';
 import AllocationChart from '../components/AllocationChart';
 import AddPositionModal from '../components/AddPositionModal';
 import SnapshotTimeline from '../components/SnapshotTimeline';
+import AboutModal from '../components/AboutModal';
 
 export default function Dashboard() {
   const {
@@ -29,6 +30,7 @@ export default function Dashboard() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPosition, setEditingPosition] = useState(null);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
 
   const metrics = getMetrics();
   const chainAllocation = getChainAllocation();
@@ -82,7 +84,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-bg-primary">
-      <Header onSnapshot={handleSnapshot} />
+      <Header onSnapshot={handleSnapshot} onAbout={() => setIsAboutOpen(true)} />
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         {/* Hero Metrics */}
@@ -211,6 +213,12 @@ export default function Dashboard() {
         onClose={handleCloseModal}
         onSave={handleSavePosition}
         editPosition={editingPosition}
+      />
+
+      {/* About Modal */}
+      <AboutModal
+        isOpen={isAboutOpen}
+        onClose={() => setIsAboutOpen(false)}
       />
     </div>
   );

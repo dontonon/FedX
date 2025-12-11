@@ -1,9 +1,22 @@
 // Parse DeFi links to extract position data
 
 // Uniswap URL patterns:
+// NEW: https://app.uniswap.org/positions/v3/arbitrum/5127705
 // https://app.uniswap.org/pools/123456?chain=arbitrum
 // https://app.uniswap.org/pool/123456?chain=arbitrum
 // https://app.uniswap.org/#/pool/123456 (old format)
+
+const chainMap = {
+  'arbitrum': 'arbitrum',
+  'arbitrum_one': 'arbitrum',
+  'optimism': 'optimism',
+  'base': 'base',
+  'polygon': 'polygon',
+  'mainnet': 'ethereum',
+  'ethereum': 'ethereum',
+  'zksync': 'zksync',
+  'linea': 'linea',
+};
 
 export function parseUniswapUrl(url) {
   try {
@@ -14,41 +27,57 @@ export function parseUniswapUrl(url) {
       return null;
     }
 
-    // Extract NFT ID from path
-    const pathMatch = parsed.pathname.match(/\/pools?\/(\d+)/);
-    if (!pathMatch) {
-      // Try hash-based routing (old format)
-      const hashMatch = parsed.hash.match(/\/pools?\/(\d+)/);
-      if (!hashMatch) return null;
-      pathMatch[1] = hashMatch[1];
+    // NEW FORMAT: /positions/v3/{chain}/{nftId}
+    // Example: https://app.uniswap.org/positions/v3/arbitrum/5127705
+    const newFormatMatch = parsed.pathname.match(/\/positions\/v([34])\/([^/]+)\/(\d+)/);
+    if (newFormatMatch) {
+      const version = newFormatMatch[1];
+      const chainRaw = newFormatMatch[2];
+      const nftId = newFormatMatch[3];
+      const chain = chainMap[chainRaw.toLowerCase()] || chainRaw.toLowerCase();
+
+      return {
+        type: 'uniswap',
+        nftId,
+        chain,
+        protocol: `uniswap-v${version}`,
+        version: parseInt(version),
+      };
     }
 
-    const nftId = pathMatch?.[1];
-    if (!nftId) return null;
+    // OLD FORMAT: /pools/{nftId}?chain={chain}
+    const pathMatch = parsed.pathname.match(/\/pools?\/(\d+)/);
+    if (pathMatch) {
+      const nftId = pathMatch[1];
+      let chain = parsed.searchParams.get('chain') || 'ethereum';
+      chain = chainMap[chain.toLowerCase()] || chain.toLowerCase();
 
-    // Extract chain from query params
-    let chain = parsed.searchParams.get('chain') || 'ethereum';
+      return {
+        type: 'uniswap',
+        nftId,
+        chain,
+        protocol: 'uniswap-v3',
+        version: 3,
+      };
+    }
 
-    // Normalize chain names
-    const chainMap = {
-      'arbitrum': 'arbitrum',
-      'arbitrum_one': 'arbitrum',
-      'optimism': 'optimism',
-      'base': 'base',
-      'polygon': 'polygon',
-      'mainnet': 'ethereum',
-      'ethereum': 'ethereum',
-      'zksync': 'zksync',
-    };
+    // HASH FORMAT (legacy): /#/pool/{nftId}
+    const hashMatch = parsed.hash.match(/\/pools?\/(\d+)/);
+    if (hashMatch) {
+      const nftId = hashMatch[1];
+      let chain = parsed.searchParams.get('chain') || 'ethereum';
+      chain = chainMap[chain.toLowerCase()] || chain.toLowerCase();
 
-    chain = chainMap[chain.toLowerCase()] || chain.toLowerCase();
+      return {
+        type: 'uniswap',
+        nftId,
+        chain,
+        protocol: 'uniswap-v3',
+        version: 3,
+      };
+    }
 
-    return {
-      type: 'uniswap',
-      nftId,
-      chain,
-      protocol: 'uniswap-v3', // Could be v4, but v3 is more common
-    };
+    return null;
   } catch {
     return null;
   }
@@ -57,9 +86,16 @@ export function parseUniswapUrl(url) {
 // Block explorer URL patterns:
 // https://arbiscan.io/address/0x...
 // https://arbiscan.io/token/0x...?a=0x...
+// https://arbiscan.io/nft/0xc36442b4a4522e871399cd717abdd847ab11fe88/5127705 (NFT view)
 // https://etherscan.io/address/0x...
 // https://optimistic.etherscan.io/address/0x...
 // https://basescan.org/address/0x...
+
+// Known Uniswap V3 Position Manager addresses
+const POSITION_MANAGERS = {
+  '0xc36442b4a4522e871399cd717abdd847ab11fe88': 'uniswap-v3', // Ethereum, Arbitrum, Optimism, Polygon
+  '0x03a520b32c04bf3beef7beb72e919cf822ed34f1': 'uniswap-v3', // Base
+};
 
 export function parseBlockExplorerUrl(url) {
   try {
@@ -78,7 +114,26 @@ export function parseBlockExplorerUrl(url) {
 
     if (!chain) return null;
 
-    // Extract address from path
+    // NFT VIEW: /nft/{contractAddress}/{tokenId}
+    // Example: https://arbiscan.io/nft/0xc36442b4a4522e871399cd717abdd847ab11fe88/5127705
+    const nftMatch = parsed.pathname.match(/\/nft\/(0x[a-fA-F0-9]{40})\/(\d+)/i);
+    if (nftMatch) {
+      const contractAddress = nftMatch[1].toLowerCase();
+      const tokenId = nftMatch[2];
+      const protocol = POSITION_MANAGERS[contractAddress];
+
+      if (protocol) {
+        return {
+          type: 'explorer-nft',
+          chain,
+          nftId: tokenId,
+          contractAddress,
+          protocol,
+        };
+      }
+    }
+
+    // Address view
     const addressMatch = parsed.pathname.match(/\/(address|token)\/?(0x[a-fA-F0-9]{40})/i);
     const address = addressMatch?.[2];
 
@@ -119,4 +174,15 @@ export function parseDefiLink(url) {
 // Validate and clean URL input
 export function isValidDefiLink(url) {
   return parseDefiLink(url) !== null;
+}
+
+// Check if we can auto-fetch from this link
+export function canAutoFetch(parsed) {
+  if (!parsed) return false;
+
+  // Can fetch if we have an NFT ID and it's a supported protocol
+  if (parsed.type === 'uniswap' && parsed.nftId) return true;
+  if (parsed.type === 'explorer-nft' && parsed.nftId && parsed.protocol) return true;
+
+  return false;
 }

@@ -7,11 +7,13 @@ import {
   Trash2,
   Copy,
   ExternalLink,
+  Download,
 } from 'lucide-react';
 import usePortfolioStore from '../stores/portfolio';
 import { formatCurrency, formatPercent, sortPositions } from '../lib/utils';
 import Header from '../components/Header';
 import AddPositionModal from '../components/AddPositionModal';
+import ImportPositionsModal from '../components/ImportPositionsModal';
 import AboutModal from '../components/AboutModal';
 
 export default function Positions() {
@@ -25,6 +27,7 @@ export default function Positions() {
   } = usePortfolioStore();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingPosition, setEditingPosition] = useState(null);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [sortField, setSortField] = useState('id');
@@ -77,6 +80,14 @@ export default function Positions() {
   const handleSnapshot = () => {
     saveSnapshot();
     alert('Snapshot saved!');
+  };
+
+  const handleImportPositions = (importedPositions) => {
+    importedPositions.forEach((position) => {
+      addPosition(position);
+    });
+    alert(`Successfully imported ${importedPositions.length} position${importedPositions.length !== 1 ? 's' : ''}!`);
+    setIsImportModalOpen(false);
   };
 
   const toggleSelectAll = () => {
@@ -148,13 +159,22 @@ export default function Positions() {
               {selectedIds.size > 0 && ` • ${selectedIds.size} selected`}
             </p>
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-accent-blue text-white rounded-lg font-medium hover:bg-accent-blue/80 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Position
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-bg-tertiary text-text-secondary rounded-lg font-medium hover:bg-bg-elevated transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Import from Wallet
+            </button>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-accent-blue text-white rounded-lg font-medium hover:bg-accent-blue/80 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Manually
+            </button>
+          </div>
         </div>
 
         {/* Positions Table */}
@@ -368,6 +388,13 @@ export default function Positions() {
         onClose={handleCloseModal}
         onSave={handleSavePosition}
         editPosition={editingPosition}
+      />
+
+      {/* Import Positions Modal */}
+      <ImportPositionsModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportPositions={handleImportPositions}
       />
 
       {/* About Modal */}

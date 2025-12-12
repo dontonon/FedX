@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Wallet, Settings, Download, Upload, RefreshCw, Camera, Info } from 'lucide-react';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { truncateAddress } from '../lib/utils';
 import usePortfolioStore from '../stores/portfolio';
 
@@ -71,15 +72,8 @@ export default function Header({ onSnapshot, onAbout }) {
               <span className="hidden sm:inline text-sm">Snapshot</span>
             </button>
 
-            {/* Wallet address */}
-            {settings.walletAddress && (
-              <div className="hidden md:flex items-center gap-2 px-3 py-2 bg-bg-tertiary rounded-lg">
-                <Wallet className="w-4 h-4 text-accent-blue" />
-                <span className="text-text-secondary text-sm font-mono">
-                  {truncateAddress(settings.walletAddress)}
-                </span>
-              </div>
-            )}
+            {/* Wallet Connection */}
+            <ConnectButton chainStatus="icon" showBalance={false} />
 
             {/* Settings dropdown */}
             <div className="relative">

@@ -47,6 +47,23 @@ export function getPublicClient(chainName) {
 // Uniswap V3 Position Manager ABI (minimal)
 const POSITION_MANAGER_ABI = [
   {
+    inputs: [{ name: 'owner', type: 'address' }],
+    name: 'balanceOf',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'index', type: 'uint256' },
+    ],
+    name: 'tokenOfOwnerByIndex',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
     inputs: [{ name: 'tokenId', type: 'uint256' }],
     name: 'positions',
     outputs: [
@@ -452,4 +469,92 @@ export async function fetchAaveAccountData(chainName, walletAddress) {
     console.error('Error fetching Aave account data:', error);
     throw error;
   }
+}
+
+// Fetch all Uniswap V3 positions for a wallet address
+export async function fetchAllUniswapV3Positions(chainName, walletAddress, onProgress) {
+  const client = getPublicClient(chainName);
+  const contracts = CONTRACTS[chainName];
+
+  if (!contracts) {
+    throw new Error(`Uniswap V3 not supported on ${chainName}`);
+  }
+
+  try {
+    // Get number of NFTs owned by wallet
+    const balance = await client.readContract({
+      address: contracts.positionManager,
+      abi: POSITION_MANAGER_ABI,
+      functionName: 'balanceOf',
+      args: [walletAddress],
+    });
+
+    const numPositions = Number(balance);
+
+    if (numPositions === 0) {
+      return [];
+    }
+
+    // Get all NFT IDs
+    const tokenIdPromises = [];
+    for (let i = 0; i < numPositions; i++) {
+      tokenIdPromises.push(
+        client.readContract({
+          address: contracts.positionManager,
+          abi: POSITION_MANAGER_ABI,
+          functionName: 'tokenOfOwnerByIndex',
+          args: [walletAddress, BigInt(i)],
+        })
+      );
+    }
+
+    const tokenIds = await Promise.all(tokenIdPromises);
+
+    // Fetch position data for each NFT
+    const positions = [];
+    for (let i = 0; i < tokenIds.length; i++) {
+      const nftId = tokenIds[i].toString();
+
+      if (onProgress) {
+        onProgress({ current: i + 1, total: tokenIds.length, nftId });
+      }
+
+      try {
+        const position = await fetchUniswapV3Position(chainName, nftId);
+
+        // Only include positions with liquidity
+        if (position.liquidity !== '0') {
+          positions.push(position);
+        }
+      } catch (error) {
+        console.warn(`Failed to fetch position ${nftId}:`, error.message);
+        // Continue with other positions
+      }
+    }
+
+    return positions;
+  } catch (error) {
+    console.error('Error fetching all Uniswap V3 positions:', error);
+    throw error;
+  }
+}
+
+// Convert blockchain position to app position format
+export function convertUniswapPositionToAppFormat(blockchainPosition) {
+  const { token0, token1, fee, totalValueUSD, nftId, chain } = blockchainPosition;
+
+  return {
+    name: `${token0.symbol}/${token1.symbol} ${fee}%`,
+    protocol: 'uniswap-v3',
+    chain: chain,
+    type: 'liquidity',
+    exposure: `${token0.symbol}/${token1.symbol}`,
+    value: totalValueUSD,
+    debt: 0,
+    apr: 0, // Would need to calculate from fees/historical data
+    monthlyFees: 0, // Would need to calculate from fees
+    nftId: nftId,
+    token0: token0.symbol,
+    token1: token1.symbol,
+  };
 }
